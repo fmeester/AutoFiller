@@ -112,6 +112,12 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Blink.h">
+      <FileType>CppCode</FileType>
+    </ClInclude>
+    <ClInclude Include="Header.h">
+      <FileType>CppCode</FileType>
+    </ClInclude>
     <ClInclude Include="__vm\.AutoFiller.vsarduino.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

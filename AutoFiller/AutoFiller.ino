@@ -74,7 +74,7 @@ unsigned long	timerFillCheck = 0;
 
 
 
-bool			refreshTimeSet = false;
+bool			refreshTimeSet = false;   
 bool			buttonstate = false;
 bool			LongButtonPress = false;
 bool			LongPress = false;
