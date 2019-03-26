@@ -124,9 +124,9 @@ bool			inputFlags[numOfInputs] = { LOW,LOW,LOW,LOW };
 ******************************************************************************************/
 const int numOfScreens = 7;
 int currentScreen = 0;
-String screens[numOfScreens][2] = { {"Time set","HH-MM-SS"},{"Volume set","Liters"}, 
-{"Calibrate man", "Pulse/Liter"}, {"Total liters","Liters"}, {"Reset", ""}, {"Start",""}, {"Calibrate auto", "Pulse/Liter"} };
-int parameters[numOfScreens];
+//String screens[numOfScreens][2] = { {"Time set","HH-MM-SS"},{"Volume set","Liters"}, 
+//{"Calibrate man", "Pulse/Liter"}, {"Total liters","Liters"}, {"Reset", ""}, {"Start",""}, {"Calibrate auto", "Pulse/Liter"} };
+//int parameters[numOfScreens];
 
 
 
