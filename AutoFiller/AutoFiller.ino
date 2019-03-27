@@ -44,6 +44,7 @@ int				volumeToAddAdress = 4;
 int				flowSensorCalibrationFactorAdress = 8;		//4 bytes
 int				RunTimeAdress = 12;							//4 bytes
 int				totalLitersAdress = 16;						//4 bytes
+int				flowSpeedAdress = 20;
 
 int				hour = 1000;
 int				minute = 1000;
@@ -54,8 +55,8 @@ unsigned long	flowCount = 0;								//
 unsigned long	fillFlowCount = 0;							// Flowcount for checking volume
 unsigned long	flowCountCheck = 0;							// Check flowcount
 int				volumeAdded = 0;							// volume filled
-const int 		lowVolumeInput = CONTROLLINO_A0;			// Low volume senor
-const int		maxVolumeInput = CONTROLLINO_A1;			// Max volume sensor
+int		 		lowVolumeInput = CONTROLLINO_A0;			// Low volume senor
+int				maxVolumeInput = CONTROLLINO_A1;			// Max volume sensor
 int				waterSolenoid = CONTROLLINO_D4;
 
 unsigned long	TimerrefreshTime;
@@ -69,8 +70,13 @@ unsigned long	TimerLongPressIncrement;
 unsigned long	eepromSaveTime = 0;							// timer for displaying 'saved'
 unsigned long	displayOffTime = 200000;					// time out for backlight / display 
 unsigned long	timerDisplayOff;
-unsigned long	fillCheckTime = 5000;							// Timer for flow check
+unsigned long	fillCheckTime = 5000;						// Timer for flow check
 unsigned long	timerFillCheck = 0;	
+unsigned long	flowSpeed;									// Flowspeed ml/sec
+unsigned long	flowSpeedTimer;
+unsigned long	flowTime = 0;
+
+
 
 
 
@@ -93,6 +99,7 @@ bool			stopDisplayFlow = false;
 bool			running = false;
 bool			calibrateSave = false;
 bool			flowCheck = false;
+bool			flowSpeedCheckRun = false;
 
 String			errorText;
 
@@ -112,18 +119,18 @@ byte			menu1Length = 7;							// Menu1 length
 Button			startButton = Button(startButtonPin, BUTTON_PULLDOWN);
 Button			stopButton = Button(stopButtonPin, BUTTON_PULLDOWN);
 
-const int		numOfInputs = 5;
-int				inputState[numOfInputs];
-int				lastInputState[numOfInputs] = { LOW,LOW,LOW,LOW };
-bool			inputFlags[numOfInputs] = { LOW,LOW,LOW,LOW };
+//const int		numOfInputs = 5;
+//int				inputState[numOfInputs];
+//int				lastInputState[numOfInputs] = { LOW,LOW,LOW,LOW };
+//bool			inputFlags[numOfInputs] = { LOW,LOW,LOW,LOW };
 
 
 
 /*****************************************************************************************
 * LCD Menu Logic													                          *
 ******************************************************************************************/
-const int numOfScreens = 7;
-int currentScreen = 0;
+//const int numOfScreens = 7;
+//int currentScreen = 0;
 //String screens[numOfScreens][2] = { {"Time set","HH-MM-SS"},{"Volume set","Liters"}, 
 //{"Calibrate man", "Pulse/Liter"}, {"Total liters","Liters"}, {"Reset", ""}, {"Start",""}, {"Calibrate auto", "Pulse/Liter"} };
 //int parameters[numOfScreens];
@@ -145,6 +152,7 @@ void setup() {
 	volumeToAdd = EEPROMReadlong(volumeToAddAdress);
 	flowSensorCalibrationFactor = EEPROMReadlong(flowSensorCalibrationFactorAdress);
 	pulsePerLiter = (flowSensorCalibrationFactor * 60);
+	flowSpeed = EEPROMReadlong(flowSpeedAdress);
 
 
 	digitalWrite(waterSolenoid, LOW);
@@ -356,9 +364,9 @@ void buttonScan()
 		if (buttons & BUTTON_SELECT)
 		{
 			//inputFlags[4] = HIGH;		//Save-enter
-			//Serial.println("Select");
+			Serial.println("Select");
 			//Serial.println(currentScreen);
-			lcd.print("SELECT ");
+			//lcd.print("SELECT ");
 			Select();
 		}
 	}
@@ -398,7 +406,7 @@ void Error(String  _errorText)
 		lcd.clear();
 		lcd.setCursor(0, 0);
 		lcd.print(_errorText);
-		menu1Select = 6;
+		menu1Select = 5;
 		lcd.noBlink();
 	}
 
@@ -486,6 +494,8 @@ void DisplayFlow()
 	// Show flowcounter
 	lcd.setCursor(0, 1);
 	lcd.print(flowCount);
+	lcd.setCursor(6, 1);
+	lcd.print(flowSpeed);
 	lcd.setCursor(12, 1);
 	lcd.print(lowVolumeCouter);
 	}
@@ -507,11 +517,15 @@ void DisplayOn()
 
 void Calibrate()
 {
+	
 	if (!ERROR & !running)
 	{
 		if (!calibrateMode)
 		{
 			flowCount = 0;
+			//flowTimeTemp = 0;
+			flowTime = 0;
+			//flowCountTemp = 0;
 			calibrateMode = true;
 			stopTimeDisplay = true;
 			stopDisplayFlow = true;
@@ -529,10 +543,27 @@ void Calibrate()
 				digitalWrite(waterSolenoid, HIGH);
 				lcd.setCursor(0, 1);
 				lcd.print(flowCount);
+				if (!flowSpeedCheckRun)
+				{
+					flowSpeedCheckRun = true;
+					flowSpeedTimer = millis();
+					Serial.println("FlowSpeedTimer");
+					Serial.println(flowSpeedTimer);
+				}
+				
 			}
 			if (!startButton.isPressed())
 			{
 				digitalWrite(waterSolenoid, LOW);
+				if (flowSpeedCheckRun)
+				{
+					flowTime = flowTime + (millis() - flowSpeedTimer);
+					Serial.println("FlowTime");
+					Serial.println(flowTime);
+					Serial.println("flowCount");
+					Serial.println(flowCount);
+					flowSpeedCheckRun = false;
+				}
 			}
 
 			if (stopButton.isPressed())
@@ -543,8 +574,6 @@ void Calibrate()
 				hour = 1000;
 				minute = 1000;
 				second = 1000;
-				//stopTimeDisplay = false;
-				//stopDisplayFlow = false;
 				menu1Select = 21;
 				Serial.println("Calibrate");
 				lcd.setCursor(0, 0);
@@ -554,6 +583,10 @@ void Calibrate()
 				lcd.print("Value ok? ");
 				lcd.setCursor(9, 1);
 				lcd.print("No ");
+				flowSensorCalibrationFactor = (flowCount / 60);
+				flowSpeed = (flowTime/1000) / 10000;
+				Serial.println("FlowSpeed");
+				Serial.println(flowSpeed);
 			}
 		}
 	}
@@ -566,13 +599,12 @@ void Calibrate()
 
 void Menu1Select()
 {
-	lcd.setCursor(0, 0);
-	lcd.print("                ");
 	switch (menu1Select) {
 	case 1:														//Time Set
 		Serial.println("Time Setting");
+		lcd.clear();
 		lcd.setCursor(0, 0);
-		lcd.print("Time Set");
+		lcd.print("Time Set        ");
 		break;
 	case 2:														//Calibrate
 		Serial.println("Calibrate manual");
@@ -580,8 +612,9 @@ void Menu1Select()
 		break;
 	case 3:														//Calibrate
 		Serial.println("Calibrate auto");
+		lcd.clear();
 		lcd.setCursor(0, 0);
-		lcd.print("Cal. auto: ");
+		lcd.print("Cal. auto:");
 		lcd.print(flowSensorCalibrationFactor);
 		break;
 	case 4:														//Volume setting
@@ -596,15 +629,21 @@ void Menu1Select()
 		break;
 	case 6:														//Reset
 		Serial.println("Reset");
+		lcd.clear();
 		lcd.setCursor(0, 0);
 		lcd.print("Reset");
 		break;
 	case 7:														//Start
 		Serial.println("Start");
+		lcd.clear();
 		lcd.setCursor(0, 0);
 		lcd.print("Start");
 		break;
+	case 21:													//Auto calibration save
+		{
 
+		}
+		break;
 
 		//default:
 		// if nothing else matches, do the default
@@ -682,21 +721,21 @@ void Menu1Select()
 //	}
 //}
 
-void parameterChange(int key) {
-	if (key == 0 & currentScreen== 1) {
-		volumeToAdd++;
-	}
-	else if (key == 1 & currentScreen == 1) {
-		volumeToAdd--;
-	}
-	if (key == 0 & currentScreen == 2) {
-		flowSensorCalibrationFactor++;
-	}
-	else if (key == 1 & currentScreen == 2) {
-		flowSensorCalibrationFactor--;
-	}
-
-}
+//void parameterChange(int key) {
+//	if (key == 0 & currentScreen== 1) {
+//		volumeToAdd++;
+//	}
+//	else if (key == 1 & currentScreen == 1) {
+//		volumeToAdd--;
+//	}
+//	if (key == 0 & currentScreen == 2) {
+//		flowSensorCalibrationFactor++;
+//	}
+//	else if (key == 1 & currentScreen == 2) {
+//		flowSensorCalibrationFactor--;
+//	}
+//
+//}
 
 void printScreen(int parameter) {
 	lcd.clear();
@@ -784,8 +823,10 @@ void Select()
 		{
 			Serial.println("writing Calibration to eeprom");
 			EEPROMWritelong(flowSensorCalibrationFactorAdress, flowSensorCalibrationFactor);
+			EEPROMWritelong(flowSpeedAdress, flowSpeed);
 			menu1Select = 1;
 			calibrateSave = false;
+			lcd.clear();
 		}
 		else
 		{
@@ -800,38 +841,53 @@ void Select()
 
 void SettingDown()
 {
-	switch (menu1Select) {
-	case 1://Speed Down
-	
-		break;
-	case 2:									//Calibration factor down
-		{
-		flowSensorCalibrationFactor--;
-		if (flowSensorCalibrationFactor < 1)
-			{
-				flowSensorCalibrationFactor = 1;	
-			}
-		printCalFac();
-		}
-		break;
-	case 4:									//Volume Down
+	switch (menu1Select) 
 	{
-		volumeToAdd--;
-		if (volumeToAdd < 1)
+		case 1://Speed Down
+
+			break;
+		case 2:									//Calibration factor down
 		{
-			volumeToAdd= 1;
+			flowSensorCalibrationFactor--;
+			if (flowSensorCalibrationFactor < 1)
+			{
+				flowSensorCalibrationFactor = 1;
+			}
+			printCalFac();
 		}
-		printVolumeToAdd();
-	}
-	break;
-
-
-	case 6: //Calibrate save y/n
-		lcd.setCursor(0, 1);
-		lcd.print("Value ok? ");
-		lcd.setCursor(9, 1);
-		lcd.print("No ");
 		break;
+		case 4:									//Volume Down
+		{
+			volumeToAdd--;
+			if (volumeToAdd < 1)
+			{
+				volumeToAdd = 1;
+			}
+			printVolumeToAdd();
+		}
+		break;
+
+
+		case 6:									//Calibrate save y/n
+			lcd.setCursor(0, 1);
+			lcd.print("Value ok? ");
+			lcd.setCursor(9, 1);
+			lcd.print("No ");
+			break;
+
+
+		case 21:								//Auto calibration save Y/N
+		{
+			lcd.setCursor(0, 0);
+			lcd.print("Calibrate: ");
+			lcd.print((flowCount / 60));
+			lcd.setCursor(0, 1);
+			lcd.print("Value ok? ");
+			lcd.setCursor(9, 1);
+			lcd.print("No ");
+			calibrateSave = false;
+		}
+			break;
 
 	}
 }
@@ -870,6 +926,18 @@ void SettingUp()
 		lcd.setCursor(9, 1);
 		lcd.print("Yes ");
 		break;
+	case 21:								//Auto calibration save Y/N
+		{
+		lcd.setCursor(0, 0);
+		lcd.print("Calibrate: ");
+		lcd.print((flowCount / 60));
+		lcd.setCursor(0, 1);
+		lcd.print("Value ok? ");
+		lcd.setCursor(9, 1);
+		lcd.print("Yes ");
+		calibrateSave = true;
+		}
+		break;
 
 	}
 }
@@ -877,6 +945,7 @@ void SettingUp()
 
 void printCalFac()
 {
+	lcd.clear();
 	lcd.setCursor(0, 0);
 	lcd.print("Cal. man: ");
 	lcd.print(flowSensorCalibrationFactor);
@@ -884,6 +953,7 @@ void printCalFac()
 
 void printVolumeToAdd()
 {
+	lcd.clear();
 	lcd.setCursor(0, 0);
 	lcd.print("Volume:");
 	lcd.print("    ");
