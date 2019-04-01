@@ -35,7 +35,7 @@ Adafruit_RGBLCDShield lcd = Adafruit_RGBLCDShield();
 int				LongPressIncrementTime = 200;
 int				totalLiters;								// Total liters added
 
-int				flowSensorCalibrationFactor;				//4 bytes Value for ticks/liter
+float			flowSensorCalibrationFactor;				//4 bytes Value for ticks/liter
 															// Debietbereik: 1 ~ 25 l / min
 															// Frequentie: F = 11 * Q(Q = L / MIN)
 int				pulsePerLiter ;
@@ -51,7 +51,7 @@ int				minute = 1000;
 int				second = 1000;
 
 int				lowVolumeCouter = 0;						//
-unsigned long	flowCount = 0;								//
+float			flowCount = 0;								//
 unsigned long	fillFlowCount = 0;							// Flowcount for checking volume
 unsigned long	flowCountCheck = 0;							// Check flowcount
 int				volumeAdded = 0;							// volume filled
@@ -72,7 +72,8 @@ unsigned long	displayOffTime = 200000;					// time out for backlight / display
 unsigned long	timerDisplayOff;
 unsigned long	fillCheckTime = 5000;						// Timer for flow check
 unsigned long	timerFillCheck = 0;	
-unsigned long	flowSpeed;									// Flowspeed ml/sec
+float			flowSpeed;									// Flowspeed Sec/Liter
+float			flowSpeedLpM;
 unsigned long	flowSpeedTimer;
 unsigned long	flowTime = 0;
 
@@ -98,7 +99,6 @@ bool			calibrateMode = false;
 bool			stopDisplayFlow = false;
 bool			running = false;
 bool			calibrateSave = false;
-bool			flowCheck = false;
 bool			flowSpeedCheckRun = false;
 
 String			errorText;
@@ -183,7 +183,7 @@ void loop() {
 
 
 	// Display Timeout
-	if (!displayTimeOutTimer)
+	if (!displayTimeOutTimer & !Error)
 	{
 		displayTimeOutTimer = true;
 		timerDisplayOff = millis();
@@ -247,17 +247,20 @@ void loop() {
 				fillFail = true;
 			}
 		}
-
-		if ((millis() - fillCheckTime) > timerFillCheck & flowCheck)	// Check if there is flow
+		if (lowVolumeTrigger)
 		{
-			if (flowCount < (flowCountCheck + 100))			// If there is no signal from flow sensor
-			{											// in the fillCheckTime
-				flowFail = true;						// Stop Filling Error
-				Error("FlowFail");
-			}
-			else
+			if ((millis() - fillCheckTime) > timerFillCheck)	// Check if there is flow
 			{
-				flowCheck = false;
+				if (flowCount < (flowCountCheck + 100))			// If there is no signal from flow sensor
+				{											// in the fillCheckTime
+					flowFail = true;						// Stop Filling Error
+					Error("FlowFail");
+				}
+				else
+				{
+					timerFillCheck = millis();
+					flowCountCheck = flowCount;
+				}
 			}
 		}
 	}
@@ -292,6 +295,7 @@ void buttonScan()
 			DisplayOn();
 			return;
 			}
+		displayTimeOutTimer = false;
 		if (buttonstate)
 		{
 			if (!LongButtonPress)
@@ -377,13 +381,16 @@ void buttonScan()
 
 void startFilling()
 	{
+		pulsePerLiter = (flowSensorCalibrationFactor * 60);
 		flowCount = 0;
 		lowVolumeCouter++;
 		lowVolumeTrigger = true;
 		fillFlowCount = volumeToAdd * pulsePerLiter;
 		digitalWrite(waterSolenoid, HIGH);
 		timerFillCheck = millis();
-		flowCheck = true;
+		flowCountCheck = flowCount;
+		DisplayOn();
+				
 	}
 
 
@@ -396,6 +403,8 @@ void StopFilling()
 		totalLiters = (totalLiters + (flowCount/pulsePerLiter));
 		EEPROMWritelong(totalLitersAdress, totalLiters);
 		flowCount = 0;
+		DisplayOn();
+		DisplayFlow();
 	}
 
 void Error(String  _errorText)
@@ -408,6 +417,7 @@ void Error(String  _errorText)
 		lcd.print(_errorText);
 		menu1Select = 5;
 		lcd.noBlink();
+		DisplayOn();
 	}
 
 void Reset()
@@ -495,7 +505,7 @@ void DisplayFlow()
 	lcd.setCursor(0, 1);
 	lcd.print(flowCount);
 	lcd.setCursor(6, 1);
-	lcd.print(flowSpeed);
+	lcd.print(flowSpeedLpM);
 	lcd.setCursor(12, 1);
 	lcd.print(lowVolumeCouter);
 	}
@@ -523,15 +533,13 @@ void Calibrate()
 		if (!calibrateMode)
 		{
 			flowCount = 0;
-			//flowTimeTemp = 0;
 			flowTime = 0;
-			//flowCountTemp = 0;
 			calibrateMode = true;
 			stopTimeDisplay = true;
 			stopDisplayFlow = true;
 			lcd.clear();
 			lcd.setCursor(0, 0);
-			lcd.print("10 L --> Save");
+			lcd.print("10 L --> Stop");
 			lcd.setCursor(0, 1);
 			lcd.print(flowCount);
 		}
@@ -557,7 +565,7 @@ void Calibrate()
 				digitalWrite(waterSolenoid, LOW);
 				if (flowSpeedCheckRun)
 				{
-					flowTime = flowTime + (millis() - flowSpeedTimer);
+					flowTime = flowTime + ((millis() - flowSpeedTimer));
 					Serial.println("FlowTime");
 					Serial.println(flowTime);
 					Serial.println("flowCount");
@@ -568,6 +576,8 @@ void Calibrate()
 
 			if (stopButton.isPressed())
 			{
+				flowSpeed =(flowTime / 1000) ; //Sec / Liter
+				flowSpeedLpM = 60 / flowSpeed;
 				calibrateMode = false;
 				digitalWrite(waterSolenoid, LOW);
 				lcd.clear();
@@ -575,18 +585,17 @@ void Calibrate()
 				minute = 1000;
 				second = 1000;
 				menu1Select = 21;
+				flowSensorCalibrationFactor = (flowCount / 600); //puls/sec/10liter
 				Serial.println("Calibrate");
 				lcd.setCursor(0, 0);
 				lcd.print("Calibrate: ");
-				lcd.print((flowCount/60));
+				lcd.print(flowSensorCalibrationFactor);
 				lcd.setCursor(0, 1);
 				lcd.print("Value ok? ");
 				lcd.setCursor(9, 1);
 				lcd.print("No ");
-				flowSensorCalibrationFactor = (flowCount / 60);
-				flowSpeed = (flowTime/1000) / 10000;
 				Serial.println("FlowSpeed");
-				Serial.println(flowSpeed);
+				Serial.println(flowSpeedLpM);
 			}
 		}
 	}
@@ -824,12 +833,15 @@ void Select()
 			Serial.println("writing Calibration to eeprom");
 			EEPROMWritelong(flowSensorCalibrationFactorAdress, flowSensorCalibrationFactor);
 			EEPROMWritelong(flowSpeedAdress, flowSpeed);
-			menu1Select = 1;
 			calibrateSave = false;
 			lcd.clear();
+			DisplayFlow();
+			menu1Select = 1;
 		}
 		else
 		{
+			lcd.clear();
+			DisplayFlow();
 			menu1Select = 1;
 		}
 
@@ -848,7 +860,7 @@ void SettingDown()
 			break;
 		case 2:									//Calibration factor down
 		{
-			flowSensorCalibrationFactor--;
+			flowSensorCalibrationFactor = (flowSensorCalibrationFactor -0.1);
 			if (flowSensorCalibrationFactor < 1)
 			{
 				flowSensorCalibrationFactor = 1;
@@ -900,7 +912,7 @@ void SettingUp()
 		break;
 	case 2: 								//Calibration factor up
 		{
-			flowSensorCalibrationFactor++;
+			flowSensorCalibrationFactor = (flowSensorCalibrationFactor +0.1);
 			if (flowSensorCalibrationFactor > 20)
 			{
 				flowSensorCalibrationFactor = 20;
